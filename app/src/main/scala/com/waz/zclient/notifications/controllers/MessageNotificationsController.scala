@@ -94,15 +94,15 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
       verbose(s"groupedNotifications received: ${notifications.map { case (acc, (_, nots)) => acc -> nots.size }}")
       notifications.toSeq.sortBy(_._1.str.hashCode).foreach {
         case (account, (shouldBeSilent, nots)) =>
-          val teamName = for {
+          (for {
             accountData <- global.accountsStorage.get(account)
             team <- accountData.map(_.teamId) match {
               case Some(Right(Some(teamId))) => global.teamsStorage.get(teamId)
               case _ => Future.successful(Option.empty[TeamData])
             }
-          } yield team.map(_.name)
-
-          teamName.map { teamName => createConvNotifications(account, shouldBeSilent, nots, teamName) }(Threading.Ui)
+          } yield team.map(_.name)).map { teamName =>
+            createConvNotifications(account, shouldBeSilent, nots, teamName)
+          }(Threading.Ui)
       }
     }
   }
@@ -133,14 +133,9 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
   private def createConvNotifications(account: AccountId, silent: Boolean, nots: Seq[NotificationInfo], teamName: Option[String]): Future[Unit] = {
     if (nots.isEmpty) Future.successful(notManager.cancel(toNotificationGroupId(account)))
     else {
-      val (ephs, others) = nots.partition(_.isEphemeral)
-
-      def groupedByTrayIds(ns: Seq[NotificationInfo]) = ns.groupBy(_.convId).map {
-        //we give ephemeral messages a different id since they should occupy a different notification tray
-        case (conv, ns) => (toNotificationConvId(account, conv) + (if (ns.forall(_.isEphemeral)) 1 else 0) ) -> ns
+      val groupedConvs = nots.groupBy(_.convId).map {
+        case (conv, ns) => toNotificationConvId(account, conv) -> ns
       }
-
-      val groupedConvs = groupedByTrayIds(others) ++ groupedByTrayIds(ephs)
 
       val teamNameOpt = if (groupedConvs.keys.size > 1) None else teamName
 
@@ -184,27 +179,29 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
     }
   }
 
-  private def getPictureForNotifications(accountId: AccountId, nots: Seq[NotificationInfo]): Future[Option[Bitmap]] = {
-    val pictures  = nots.flatMap(_.userPicture).distinct
-    val iconWidth = toPx(64)
-    val assetId   = if (pictures.size == 1) pictures.headOption else None
+  private def getPictureForNotifications(accountId: AccountId, nots: Seq[NotificationInfo]): Future[Option[Bitmap]] =
+    if (nots.exists(_.isEphemeral)) Future.successful(None)
+    else {
+      val pictures  = nots.flatMap(_.userPicture).distinct
+      val iconWidth = toPx(64)
+      val assetId   = if (pictures.size == 1) pictures.headOption else None
 
-    for {
-      zms       <- accounts.zms(accountId).head
-      assetData <- (zms, assetId) match {
-        case (Some(z), Some(aId)) => z.assetsStorage.get(aId)
-        case _ => Future.successful(None)
+      for {
+        zms       <- accounts.zms(accountId).head
+        assetData <- (zms, assetId) match {
+          case (Some(z), Some(aId)) => z.assetsStorage.get(aId)
+          case _ => Future.successful(None)
+        }
+        bmp <- (zms, assetData) match {
+          case (Some(z), Some(ad)) => z.imageLoader.loadBitmap(ad, BitmapRequest.Single(iconWidth), forceDownload = false).map(Option(_)).withTimeout(500.millis).recoverWith {
+            case _ : Throwable => CancellableFuture.successful(None)
+          }.future
+          case _ => Future.successful(None)
+        }
+      } yield {
+        bmp.map { original => BitmapUtils.createRoundBitmap(original, iconWidth, 0, Color.TRANSPARENT) }
       }
-      bmp <- (zms, assetData) match {
-        case (Some(z), Some(ad)) => z.imageLoader.loadBitmap(ad, BitmapRequest.Single(iconWidth), forceDownload = false).map(Option(_)).withTimeout(500.millis).recoverWith {
-          case _ : Throwable => CancellableFuture.successful(None)
-        }.future
-        case _ => Future.successful(None)
-      }
-    } yield {
-      bmp.map { original => BitmapUtils.createRoundBitmap(original, iconWidth, 0, Color.TRANSPARENT) }
     }
-  }
 
   private def createSummaryNotification(account: AccountId, silent: Boolean, nots: Seq[NotificationInfo], teamName: Option[String]): Option[Notification] =
     if (!notManager.getActiveNotificationIds.contains(toNotificationGroupId(account))) {
@@ -265,7 +262,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
     val title = returning(new SpannableString(getMessageTitle(n, None))) { sp =>
       sp.setSpan(new StyleSpan(Typeface.BOLD), 0, sp.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
-    val body = getMessage(n, multiple = false, singleConversationInBatch = true, singleUserInBatch = true)
+    val body = getMessage(n, singleConversationInBatch = true)
     val requestBase = System.currentTimeMillis.toInt
 
     val bigTextStyle = returning(new NotificationCompat.BigTextStyle) { s =>
@@ -322,7 +319,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
         addQuickReplyAction(builder, accountId, convIds.head, requestBase + 2)
     }
 
-    val messages = ns.sortBy(_.time).map(n => getMessage(n, multiple = true, singleConversationInBatch = isSingleConv, singleUserInBatch = users.size == 1 && isSingleConv)).takeRight(5)
+    val messages = ns.sortBy(_.time).map(n => getMessage(n, singleConversationInBatch = isSingleConv)).takeRight(5)
 
     val inboxStyle = returning(new NotificationCompat.InboxStyle()) { s =>
       s.setBigContentTitle(title)
@@ -371,70 +368,65 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
     ac <- inject[AccentColorController].accentColor(z)
   } yield ac.getColor).head
 
-  private[notifications] def getMessage(n: NotificationInfo, multiple: Boolean, singleConversationInBatch: Boolean, singleUserInBatch: Boolean) = {
+  private[notifications] def getMessage(n: NotificationInfo, singleConversationInBatch: Boolean) = {
     val message = n.message.replaceAll("\\r\\n|\\r|\\n", " ")
     val isTextMessage = n.tpe == TEXT
 
     val header = n.tpe match {
       case CONNECT_ACCEPTED => ""
-      case _ => getDefaultNotificationMessageLineHeader(n, multiple, singleConversationInBatch, singleConversationInBatch)
+      case _ => getDefaultNotificationMessageLineHeader(n, singleConversationInBatch)
     }
 
     val body = n.tpe match {
-      case _ if n.isEphemeral       => getString(R.string.conversation_list__ephemeral)
-      case TEXT | CONNECT_REQUEST   => message
-      case MISSED_CALL              => getString(R.string.notification__message__one_to_one__wanted_to_talk)
-      case KNOCK                    => getString(R.string.notification__message__one_to_one__pinged)
-      case ANY_ASSET                => getString(R.string.notification__message__one_to_one__shared_file)
-      case ASSET                    => getString(R.string.notification__message__one_to_one__shared_picture)
-      case VIDEO_ASSET              => getString(R.string.notification__message__one_to_one__shared_video)
-      case AUDIO_ASSET              => getString(R.string.notification__message__one_to_one__shared_audio)
-      case LOCATION                 => getString(R.string.notification__message__one_to_one__shared_location)
-      case RENAME                   => getString(R.string.notification__message__group__renamed_conversation, message)
-      case MEMBER_LEAVE             => getString(R.string.notification__message__group__remove)
-      case MEMBER_JOIN              => getString(R.string.notification__message__group__add)
+      case _ if n.isEphemeral                     => getString(R.string.conversation_list__ephemeral)
+      case TEXT | CONNECT_REQUEST                 => message
+      case MISSED_CALL                            => getString(R.string.notification__message__one_to_one__wanted_to_talk)
+      case KNOCK                                  => getString(R.string.notification__message__one_to_one__pinged)
+      case ANY_ASSET                              => getString(R.string.notification__message__one_to_one__shared_file)
+      case ASSET                                  => getString(R.string.notification__message__one_to_one__shared_picture)
+      case VIDEO_ASSET                            => getString(R.string.notification__message__one_to_one__shared_video)
+      case AUDIO_ASSET                            => getString(R.string.notification__message__one_to_one__shared_audio)
+      case LOCATION                               => getString(R.string.notification__message__one_to_one__shared_location)
+      case RENAME                                 => getString(R.string.notification__message__group__renamed_conversation, message)
+      case MEMBER_LEAVE                           => getString(R.string.notification__message__group__remove)
+      case MEMBER_JOIN                            => getString(R.string.notification__message__group__add)
+      case CONNECT_ACCEPTED if n.userName.isEmpty => getString(R.string.notification__message__generic__accept_request)
+      case CONNECT_ACCEPTED                       => getString(R.string.notification__message__single__accept_request, n.userName.getOrElse(""))
+      case MESSAGE_SENDING_FAILED                 => getString(R.string.notification__message__send_failed)
       case LIKE if n.likedContent.nonEmpty =>
         n.likedContent match {
           case Some(LikedContent.PICTURE)     => getString(R.string.notification__message__liked_picture)
           case Some(LikedContent.TEXT_OR_URL) => getString(R.string.notification__message__liked, n.message)
           case _                              => getString(R.string.notification__message__liked_message)
         }
-      case CONNECT_ACCEPTED         => if (n.userName.isEmpty) getString(R.string.notification__message__generic__accept_request)
-                                       else                    getString(R.string.notification__message__single__accept_request, n.userName.getOrElse(""))
-      case MESSAGE_SENDING_FAILED   => getString(R.string.notification__message__send_failed)
       case _ => ""
     }
-    getMessageSpannable(header, body, isTextMessage)
+    getMessageSpannable(header, body, isTextMessage, n.isEphemeral)
   }
 
-  private def getMessageTitle(n: NotificationInfo, teamName: Option[String]) = {
-    val convName = n.convName.orElse(n.userName).getOrElse("")
-    teamName.fold{
-      convName
-    } { team =>
-      getString(R.string.notification__message__group__prefix__other, convName, team)
+  private def getMessageTitle(n: NotificationInfo, teamName: Option[String]) =
+    if (n.isEphemeral) getString(R.string.notification__message__ephemeral_someone)
+    else {
+      val convName = n.convName.orElse(n.userName).getOrElse("")
+      teamName.fold(convName)(getString(R.string.notification__message__group__prefix__other, convName, _))
     }
-  }
 
   @TargetApi(21)
-  private def getMessageSpannable(header: String, body: String, isTextMessage: Boolean) = {
-    val messageSpannable = new SpannableString(header + body)
-    messageSpannable.setSpan(new ForegroundColorSpan(Color.BLACK), 0, header.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    if (!isTextMessage) {
-      messageSpannable.setSpan(new StyleSpan(Typeface.ITALIC), header.length, messageSpannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+  private def getMessageSpannable(header: String, body: String, isTextMessage: Boolean, isEphemeral: Boolean) =
+    returning(new SpannableString(header + body)) { sp =>
+      sp.setSpan(new ForegroundColorSpan(Color.BLACK), 0, header.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      if (!isTextMessage || isEphemeral) sp.setSpan(new StyleSpan(Typeface.ITALIC), header.length, sp.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
-    messageSpannable
-  }
 
-  private def getDefaultNotificationMessageLineHeader(n: NotificationInfo, multipleMessages: Boolean, singleConversationInBatch: Boolean, singleUser: Boolean) = {
-    val prefixId = if (!singleConversationInBatch && n.isGroupConv) {
-      R.string.notification__message__group__prefix__text
-    } else if (!singleConversationInBatch && !n.isGroupConv || singleConversationInBatch && n.isGroupConv) {
-      R.string.notification__message__name__prefix__text
-    } else 0
-
-    getStringOrEmpty(prefixId, n.userName.getOrElse(""), n.convName.filterNot(_.isEmpty).getOrElse(getString(R.string.notification__message__group__default_conversation_name)))
-  }
+  private def getDefaultNotificationMessageLineHeader(n: NotificationInfo, singleConversationInBatch: Boolean) =
+    if (n.isEphemeral) ""
+    else {
+      val prefixId =
+        if (!singleConversationInBatch && n.isGroupConv) R.string.notification__message__group__prefix__text
+        else if (!singleConversationInBatch && !n.isGroupConv || singleConversationInBatch && n.isGroupConv) R.string.notification__message__name__prefix__text
+        else 0
+      getStringOrEmpty(prefixId, n.userName.getOrElse(""), n.convName.filterNot(_.isEmpty).getOrElse(getString(R.string.notification__message__group__default_conversation_name)))
+    }
 
   private def notificationColor(accountId: AccountId) = {
     BuildConfig.APPLICATION_ID match {
