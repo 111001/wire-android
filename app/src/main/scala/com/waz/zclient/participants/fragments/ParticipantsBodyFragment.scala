@@ -18,59 +18,97 @@
 
 package com.waz.zclient.participants.fragments
 
+import android.content.Context
 import android.os.Bundle
+import android.support.annotation.Nullable
 import android.support.v7.widget.{GridLayoutManager, RecyclerView}
 import android.view.animation.{AlphaAnimation, Animation}
 import android.view.{LayoutInflater, View, ViewGroup}
 import android.widget.LinearLayout
-import com.waz.api.{IConversation, NetworkMode, User, UsersList}
-import com.waz.model.ConvId
-import com.waz.service.ZMessaging
+import com.waz.ZLog.ImplicitTag._
+import com.waz.ZLog.verbose
+import com.waz.api.{IConversation, NetworkMode, User}
+import com.waz.model.{ConvId, ConversationData, UserId}
 import com.waz.threading.Threading
-import com.waz.utils.events.Signal
-import com.waz.utils.returning
+import com.waz.utils._
+import com.waz.utils.events.{EventStream, SourceStream}
 import com.waz.zclient.common.controllers.{SoundController, ThemeController, UserAccountsController}
-import com.waz.zclient.controllers.accentcolor.AccentColorObserver
 import com.waz.zclient.controllers.confirmation.{ConfirmationRequest, IConfirmationController, TwoButtonConfirmationCallback}
 import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.core.stores.connect.{ConnectStoreObserver, IConnectStore}
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
 import com.waz.zclient.core.stores.network.NetworkAction
-import com.waz.zclient.core.stores.participants.ParticipantsStoreObserver
 import com.waz.zclient.integrations.IntegrationDetailsController
 import com.waz.zclient.pages.BaseFragment
 import com.waz.zclient.pages.main.conversation.controller.IConversationScreenController
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
-import com.waz.zclient.participants.ParticipantsChatheadAdapter
-import com.waz.zclient.ui.views.ZetaButton
-import com.waz.zclient.utils.{LayoutSpec, ViewUtils}
+import com.waz.zclient.participants.{ParticipantsChatheadAdapter, ParticipantsController}
+import com.waz.zclient.utils.ContextUtils._
+import com.waz.zclient.utils.{LayoutSpec, RichView, ViewUtils}
 import com.waz.zclient.views.images.ImageAssetImageView
 import com.waz.zclient.views.menus.{FooterMenu, FooterMenuCallback}
 import com.waz.zclient.{FragmentHelper, R}
-import com.waz.ZLog.ImplicitTag._
 
 import scala.concurrent.Future
 
+class ParticipantsBodyFragment extends BaseFragment[ParticipantsBodyFragment.Container] with FragmentHelper
+  with ConnectStoreObserver {
 
-class ParticipantBodyFragment extends BaseFragment[ParticipantBodyFragment.Container] with FragmentHelper
-  with ParticipantsStoreObserver with AccentColorObserver with ConnectStoreObserver {
-  private var participantsView: RecyclerView = _
-  private var participantsAdapter: ParticipantsChatheadAdapter = _
-  private var footerMenu: FooterMenu = _
-  private var topBorder: View = _
-  private var footerWrapper: LinearLayout = _
-  private var unblockButton: ZetaButton = _
+  implicit def ctx: Context = getActivity
+  import Threading.Implicits.Ui
+
   private var userRequester: IConnectStore.UserRequester = _
-  private var imageAssetImageView: ImageAssetImageView = _
 
-  private lazy val zms = inject[Signal[ZMessaging]]
   private lazy val convController = inject[ConversationController]
+  private lazy val participantsController = inject[ParticipantsController]
   private lazy val convScreenController = inject[IConversationScreenController]
   private lazy val userAccountsController = inject[UserAccountsController]
   private lazy val pickUserController = inject[IPickUserController]
   private lazy val themeController = inject[ThemeController]
   private lazy val confirmationController = inject[IConfirmationController]
   private lazy val integrationDetailsController = inject[IntegrationDetailsController]
+
+  private lazy val participantsView = returning(view[RecyclerView](R.id.pgv__participants)) { view =>
+    val layoutManager =
+      returning(new GridLayoutManager(getContext, getInt(R.integer.participant_column__count))) {
+        _.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+          override def getSpanSize(position: Int): Int = participantsAdapter.getSpanSize(position)
+        })
+      }
+
+    view.foreach { v =>
+      v.setAdapter(participantsAdapter)
+      v.setLayoutManager(layoutManager)
+    }
+  }
+
+  private lazy val participantsAdapter =
+    returning(new ParticipantsChatheadAdapter(getInt(R.integer.participant_column__count))) {
+      _.onClick.onUi { userId =>
+        participantsController.getUser(userId).flatMap {
+          case Some(user) => (user.providerId, user.integrationId) match {
+            case (Some(pId), Some(iId)) => convController.currentConv.head.map { conv =>
+              integrationDetailsController.setRemoving(conv.id, userId)
+              convScreenController.showIntegrationDetails(pId, iId)
+            }
+            case _ =>
+              verbose(s"onClick: ${user.displayName}")
+              convScreenController.showUser(userId)
+              participantsController.selectParticipant(userId)
+          }
+          case _ => Future.successful(())
+        }
+      }
+    }
+
+  private lazy val footerMenu = view[FooterMenu](R.id.fm__participants__footer)
+
+  private lazy val topBorder = view[View](R.id.v_participants__footer__top_border)
+  private lazy val footerWrapper = view[LinearLayout](R.id.ll__participants__footer_wrapper)
+
+  private lazy val imageAssetImageView = returning(view[ImageAssetImageView](R.id.iaiv__participant_body)) {
+    _.foreach(_.setDisplayType(ImageAssetImageView.DisplayType.CIRCLE))
+  }
 
   override def onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation = {
     val parent = getParentFragment
@@ -87,65 +125,26 @@ class ParticipantBodyFragment extends BaseFragment[ParticipantBodyFragment.Conta
 
   override def onCreate(savedInstanceState: Bundle): Unit = {
     super.onCreate(savedInstanceState)
-    userRequester = getArguments.getSerializable(ParticipantBodyFragment.ARG_USER_REQUESTER).asInstanceOf[IConnectStore.UserRequester]
+    userRequester = getArguments.getSerializable(ParticipantsBodyFragment.ARG_USER_REQUESTER).asInstanceOf[IConnectStore.UserRequester]
   }
 
-  override def onCreateView(inflater: LayoutInflater, viewGroup: ViewGroup, savedInstanceState: Bundle): View = {
-    val view = inflater.inflate(R.layout.fragment_group_participant, viewGroup, false)
-    footerMenu = ViewUtils.getView(view, R.id.fm__participants__footer)
-    topBorder = ViewUtils.getView(view, R.id.v_participants__footer__top_border)
-    footerWrapper = ViewUtils.getView(view, R.id.ll__participants__footer_wrapper)
-    unblockButton = ViewUtils.getView(view, R.id.zb__single_user_participants__unblock_button)
-    imageAssetImageView = ViewUtils.getView(view, R.id.iaiv__participant_body)
-    imageAssetImageView.setDisplayType(ImageAssetImageView.DisplayType.CIRCLE)
-
-    implicit val ctx = getContext
-
-    val numberOfColumns = getResources.getInteger(R.integer.participant_column__count)
-    participantsAdapter = new ParticipantsChatheadAdapter(numberOfColumns)
-    participantsView = ViewUtils.getView(view, R.id.pgv__participants)
-
-    participantsView.setAdapter(participantsAdapter)
-
-    import Threading.Implicits.Ui
-    participantsAdapter.onClick.onUi { userId =>
-      zms.map(_.usersStorage).head.flatMap(_.get(userId)).flatMap {
-        case Some(userData) =>
-          (userData.providerId, userData.integrationId) match {
-            case (Some(pId), Some(iId)) =>
-              convController.currentConv.head.map { conv =>
-                integrationDetailsController.setRemoving(conv.id, userId)
-                getControllerFactory.getConversationScreenController.showIntegrationDetails(pId, iId)
-              }
-            case _ =>
-              val user = getStoreFactory.pickUserStore.getUser(userId.str)
-              getControllerFactory.getConversationScreenController.showUser(user)
-              Future.successful(())
-          }
-        case _ =>
-          Future.successful(())
-      }
+  override def onCreateView(inflater: LayoutInflater, viewGroup: ViewGroup, savedInstanceState: Bundle): View =
+    returning(inflater.inflate(R.layout.fragment_group_participant, viewGroup, false)) {
+      // Toggle color background
+      _.onClick(backgroundClicked ! Unit)
     }
 
-    val layoutManager = new GridLayoutManager(ctx, numberOfColumns)
+  val backgroundClicked: SourceStream[Unit] = EventStream()
 
-    layoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
-      override def getSpanSize(position: Int): Int = participantsAdapter.getSpanSize(position)
-    })
+  override def onViewCreated(view: View, @Nullable savedInstanceState: Bundle): Unit = {
+    super.onViewCreated(view, savedInstanceState)
 
-    participantsView.setLayoutManager(layoutManager)
+    participantsView
+    topBorder
+    footerWrapper
+    imageAssetImageView
 
-    // Hide footer until conversation is loaded
-    footerMenu.setVisibility(View.GONE)
-    unblockButton.setVisibility(View.GONE)
-    // Toggle color background
-    view.setOnClickListener(new View.OnClickListener() {
-      override def onClick(view: View): Unit = {
-        getContainer.onClickedEmptyBackground()
-      }
-    })
-
-    view
+    participantsController.conv.onUi { conversationUpdated }
   }
 
   override def onStart(): Unit = {
@@ -153,54 +152,44 @@ class ParticipantBodyFragment extends BaseFragment[ParticipantBodyFragment.Conta
     if (userRequester == IConnectStore.UserRequester.POPOVER) {
       getStoreFactory.connectStore.addConnectRequestObserver(this)
       getStoreFactory.connectStore.loadUser(
-        getStoreFactory.singleParticipantStore.getUser.getId,
-        userRequester
+        getStoreFactory.singleParticipantStore.getUser.getId, userRequester
       )
-    } else getStoreFactory.participantsStore.addParticipantsStoreObserver(this)
+    }
 
-    getControllerFactory.getAccentColorController.addAccentColorObserver(this)
   }
 
   override def onStop(): Unit = {
     getStoreFactory.connectStore.removeConnectRequestObserver(this)
-    getStoreFactory.participantsStore.removeParticipantsStoreObserver(this)
-    getControllerFactory.getAccentColorController.removeAccentColorObserver(this)
     super.onStop()
   }
 
-  override def onDestroyView(): Unit = {
-    imageAssetImageView = null
-    participantsView = null
-    participantsAdapter = null
-    footerMenu = null
-    topBorder = null
-    footerWrapper = null
-    super.onDestroyView()
-  }
+  private def getOldUserAPI(userId: UserId): User = getStoreFactory.pickUserStore.getUser(userId.str)
 
-  override def conversationUpdated(conv: IConversation): Unit = {
-    footerMenu.setVisibility(View.VISIBLE)
-    if (conv.getType == IConversation.Type.ONE_TO_ONE) {
-      footerMenu.setLeftActionText(getString(R.string.glyph__plus))
-      getStoreFactory.singleParticipantStore.setUser(conv.getOtherParticipant)
+  private def conversationUpdated(conv: ConversationData): Unit = {
+    verbose(s"conversationUpdated: ${conv.name}, showing the footer menu")
+    footerMenu.foreach(_.setVisible(true))
+    if (conv.convType == IConversation.Type.ONE_TO_ONE) {
+      footerMenu.foreach(_.setLeftActionText(getString(R.string.glyph__plus)))
+      participantsController.otherParticipant.head.foreach {
+        case Some(userId) => getStoreFactory.singleParticipantStore.setUser(getOldUserAPI(userId))
+        case _            => getStoreFactory.singleParticipantStore.setUser(null)
+      }
+
     } else {
-      imageAssetImageView.setVisibility(View.GONE)
+      imageAssetImageView.foreach(_.setVisibility(View.GONE))
 
       // Check if self user is member for group conversation and has permission to add
-      if (conv.isMemberOfConversation &&
-          userAccountsController.hasAddConversationMemberPermission(new ConvId(conv.getId))
-      ) {
-        footerMenu.setLeftActionText(getString(R.string.glyph__add_people))
-        footerMenu.setLeftActionLabelText(getString(R.string.conversation__action__add_people))
-      } else {
-        footerMenu.setLeftActionText("")
-        footerMenu.setLeftActionLabelText("")
+      val displayAddButton = conv.isActive &&
+        userAccountsController.hasAddConversationMemberPermission(conv.id)
+      footerMenu.foreach { fm =>
+        fm.setLeftActionText(if (displayAddButton) getString(R.string.glyph__add_people) else "")
+        fm.setLeftActionLabelText(if (displayAddButton) getString(R.string.conversation__action__add_people) else "")
       }
     }
 
-    footerMenu.setRightActionText(getString(R.string.glyph__more))
+    footerMenu.foreach(_.setRightActionText(getString(R.string.glyph__more)))
 
-    footerMenu.setCallback(new FooterMenuCallback() {
+    footerMenu.foreach(_.setCallback(new FooterMenuCallback() {
       override def onLeftActionClicked(): Unit = {
         if (userRequester == IConnectStore.UserRequester.POPOVER) {
           val user = getStoreFactory.singleParticipantStore.getUser
@@ -213,17 +202,14 @@ class ParticipantBodyFragment extends BaseFragment[ParticipantBodyFragment.Conta
           }
         }
 
-        if (conv.isMemberOfConversation && userAccountsController.hasAddConversationMemberPermission(new ConvId(conv.getId)))
+        if (conv.isActive && userAccountsController.hasAddConversationMemberPermission(conv.id))
           convScreenController.addPeopleToConversation()
       }
 
       override def onRightActionClicked(): Unit = getStoreFactory.networkStore.doIfHasInternetOrNotifyUser(new NetworkAction() {
-        override def execute(networkMode: NetworkMode): Unit = if (conv.isMemberOfConversation) {
-          if (userRequester == IConnectStore.UserRequester.POPOVER) {
-            val otherUser = conv.getOtherParticipant
-            getContainer.toggleBlockUser(otherUser, otherUser.getConnectionStatus != User.ConnectionStatus.BLOCKED)
-          } else convScreenController.showConversationMenu(false, new ConvId(conv.getId))
-        }
+        override def execute(networkMode: NetworkMode): Unit =
+          if (conv.isActive && userRequester != IConnectStore.UserRequester.POPOVER)
+            convScreenController.showConversationMenu(false, conv.id)
 
         override def onNoNetwork(): Unit = ViewUtils.showAlertDialog(getActivity,
           R.string.alert_dialog__no_network__header, R.string.leave_conversation_failed__message,
@@ -231,86 +217,76 @@ class ParticipantBodyFragment extends BaseFragment[ParticipantBodyFragment.Conta
         )
       })
 
-    })
+    }))
   }
 
-  override def participantsUpdated(participants: UsersList): Unit =
-    participantsAdapter.notifyDataSetChanged()
-
-  override def otherUserUpdated(otherUser: User): Unit = if (Option(otherUser).isDefined && Option(getView).isDefined) {
-    participantsAdapter.notifyDataSetChanged()
-    imageAssetImageView.setVisibility(View.VISIBLE)
-    imageAssetImageView.connectImageAsset(otherUser.getPicture)
-    otherUser.getConnectionStatus match {
-      case User.ConnectionStatus.BLOCKED =>
-        footerMenu.setVisibility(View.GONE)
-        unblockButton.setVisibility(View.VISIBLE)
-        unblockButton.setOnClickListener(new View.OnClickListener() {
-          override def onClick(v: View): Unit = otherUser.unblock
-        })
-      case _ =>
-        footerMenu.setVisibility(View.VISIBLE)
-        unblockButton.setVisibility(View.GONE)
-        unblockButton.setOnClickListener(null)
-    }
+  private def connectImageAsset(user: User): Unit = imageAssetImageView.foreach { view =>
+    view.setVisible(true)
+    view.connectImageAsset(user.getPicture)
   }
 
-  override def onAccentColorHasChanged(sender: Any, color: Int): Unit = unblockButton.setAccentColor(color)
+  override def onConnectUserUpdated(user: User, userType: IConnectStore.UserRequester): Unit =
+    if (userType == userRequester && Option(user).isDefined) {
+      verbose(s"onConnectUserUpdated: ${user.getName}, showing the footer menu")
+      connectImageAsset(user)
+      footerMenu.foreach(_.setVisible(true))
 
-  override def onConnectUserUpdated(user: User, userType: IConnectStore.UserRequester): Unit = if (userType == userRequester && Option(user).isDefined) {
-    imageAssetImageView.setVisibility(View.VISIBLE)
-    imageAssetImageView.connectImageAsset(user.getPicture)
-    footerMenu.setVisibility(View.VISIBLE)
+      participantsController.groupOrBot.head.foreach { groupOrBot =>
+        footerMenu.foreach { menu =>
+          menu.setLeftActionText(getString(
+            if (user.isMe) R.string.glyph__people
+            else if (!groupOrBot) R.string.glyph__add_people
+            else R.string.glyph__conversation
+          ))
 
-    convController.currentConv.head.foreach { conv =>
-      (conv.convType, user.isMe) match {
-        case (IConversation.Type.ONE_TO_ONE, true) =>
-          footerMenu.setLeftActionText(getString(R.string.glyph__people))
-          footerMenu.setLeftActionLabelText(getString(R.string.popover__action__profile))
-          footerMenu.setRightActionText("")
-          footerMenu.setRightActionLabelText("")
-        case (IConversation.Type.ONE_TO_ONE, false) =>
-          footerMenu.setLeftActionText(getString(R.string.glyph__add_people))
-          footerMenu.setLeftActionLabelText(getString(R.string.conversation__action__create_group))
-          footerMenu.setRightActionText(getString(R.string.glyph__block))
-          footerMenu.setRightActionLabelText(getString(R.string.popover__action__block))
-        case (_, true) =>
-          footerMenu.setLeftActionText(getString(R.string.glyph__people))
-          footerMenu.setLeftActionLabelText(getString(R.string.popover__action__profile))
-          footerMenu.setRightActionText(getString(R.string.glyph__minus))
-          footerMenu.setRightActionLabelText("")
-        case (_, false) =>
-          footerMenu.setLeftActionText(getString(R.string.glyph__conversation))
-          footerMenu.setLeftActionLabelText(getString(R.string.popover__action__open))
-          footerMenu.setRightActionText(getString(R.string.glyph__minus))
-          footerMenu.setRightActionLabelText(getString(R.string.popover__action__remove))
-      }
+          menu.setLeftActionLabelText(getString(
+            if (user.isMe) R.string.popover__action__profile
+            else if (!groupOrBot) R.string.conversation__action__create_group
+            else R.string.popover__action__open
+          ))
 
-      footerMenu.setCallback(new FooterMenuCallback() {
-        override def onLeftActionClicked(): Unit = if (user.isMe || (conv.convType != IConversation.Type.ONE_TO_ONE)) {
-          convScreenController.hideParticipants(true, false)
-          pickUserController.hidePickUserWithoutAnimations(getContainer.getCurrentPickerDestination)
-          convController.selectConv(new ConvId(user.getConversation.getId), ConversationChangeRequester.CONVERSATION_LIST)
-        } else convScreenController.addPeopleToConversation()
+          menu.setRightActionText(
+            if (groupOrBot) getString(R.string.glyph__minus)
+            else if (user.isMe) ""
+            else getString(R.string.glyph__block)
+          )
 
-        override def onRightActionClicked(): Unit = if (conv.convType == IConversation.Type.ONE_TO_ONE) {
-          if (!user.isMe) getContainer.toggleBlockUser(user, user.getConnectionStatus ne User.ConnectionStatus.BLOCKED)
-          else getStoreFactory.networkStore.doIfHasInternetOrNotifyUser(new NetworkAction() {
-            override def execute(networkMode: NetworkMode): Unit =
-              if (user.isMe) showLeaveConfirmation(conv.id)
-              else getContainer.showRemoveConfirmation(user)
+          menu.setRightActionLabelText(
+            if (user.isMe) ""
+            else if (!groupOrBot) getString(R.string.popover__action__block)
+            else getString(R.string.popover__action__remove)
+          )
 
-            override def onNoNetwork(): Unit = ViewUtils.showAlertDialog(
-              getActivity,
-              R.string.alert_dialog__no_network__header,
-              if (user.isMe) R.string.leave_conversation_failed__message
-              else R.string.remove_from_conversation__no_network__message,
-              R.string.alert_dialog__confirmation, null, true)
+          menu.setCallback(new FooterMenuCallback() {
+            override def onLeftActionClicked(): Unit =
+              if (user.isMe || groupOrBot) {
+                convScreenController.hideParticipants(true, false)
+                pickUserController.hidePickUserWithoutAnimations(getContainer.getCurrentPickerDestination)
+                convController.selectConv(
+                  new ConvId(user.getConversation.getId),
+                  ConversationChangeRequester.CONVERSATION_LIST
+                )
+              } else convScreenController.addPeopleToConversation()
+
+            override def onRightActionClicked(): Unit = if (!groupOrBot && user.isMe)
+              getStoreFactory.networkStore.doIfHasInternetOrNotifyUser(new NetworkAction() {
+                override def execute(networkMode: NetworkMode): Unit =
+                  if (user.isMe) convController.currentConvId.head.foreach { showLeaveConfirmation }
+                  else getContainer.showRemoveConfirmation(UserId(user.getId))
+
+                override def onNoNetwork(): Unit = ViewUtils.showAlertDialog(
+                  getActivity,
+                  R.string.alert_dialog__no_network__header,
+                  if (user.isMe) R.string.leave_conversation_failed__message
+                  else R.string.remove_from_conversation__no_network__message,
+                  R.string.alert_dialog__confirmation, null, true
+                )
+              })
           })
         }
-      })
-    }(Threading.Ui)
-  }
+
+      }
+    }
 
   override def onInviteRequestSent(conversation: IConversation): Unit = {}
 
@@ -330,44 +306,38 @@ class ParticipantBodyFragment extends BaseFragment[ParticipantBodyFragment.Conta
       override def onHideAnimationEnd(confirmed: Boolean, canceled: Boolean, checkboxIsSelected: Boolean): Unit = {}
     }
 
-    val header = getString(R.string.confirmation_menu__meta_remove)
-    val text = getString(R.string.confirmation_menu__meta_remove_text)
-    val confirm = getString(R.string.confirmation_menu__confirm_leave)
-    val cancel = getString(R.string.confirmation_menu__cancel)
-    val checkboxLabel = getString(R.string.confirmation_menu__delete_conversation__checkbox__label)
-    val request = new ConfirmationRequest.Builder().withHeader(header)
-      .withMessage(text)
-      .withPositiveButton(confirm)
-      .withNegativeButton(cancel)
+    val request = new ConfirmationRequest.Builder()
+      .withHeader(getString(R.string.confirmation_menu__meta_remove))
+      .withMessage(getString(R.string.confirmation_menu__meta_remove_text))
+      .withPositiveButton(getString(R.string.confirmation_menu__confirm_leave))
+      .withNegativeButton(getString(R.string.confirmation_menu__cancel))
       .withConfirmationCallback(callback)
-      .withCheckboxLabel(checkboxLabel)
+      .withCheckboxLabel(getString(R.string.confirmation_menu__delete_conversation__checkbox__label))
       .withWireTheme(themeController.getThemeDependentOptionsTheme)
       .withCheckboxSelectedByDefault
       .build
     confirmationController.requestConfirmation(request, IConfirmationController.PARTICIPANTS)
+
     val ctrl = inject[SoundController]
     if (Option(ctrl).isDefined) ctrl.playAlert()
   }
 
 }
 
-object ParticipantBodyFragment {
-  val TAG: String = classOf[ParticipantBodyFragment].getName
+object ParticipantsBodyFragment {
+  val TAG: String = classOf[ParticipantsBodyFragment].getName
   private val ARG_USER_REQUESTER = "ARG_USER_REQUESTER"
 
-  def newInstance(userRequester: IConnectStore.UserRequester): ParticipantBodyFragment =
-    returning(new ParticipantBodyFragment) {
+  def newInstance(userRequester: IConnectStore.UserRequester): ParticipantsBodyFragment =
+    returning(new ParticipantsBodyFragment) {
       _.setArguments(returning(new Bundle){
         _.putSerializable(ARG_USER_REQUESTER, userRequester)
       })
     }
 
   trait Container {
-    def onClickedEmptyBackground(): Unit
 
-    def toggleBlockUser(otherUser: User, block: Boolean): Unit
-
-    def showRemoveConfirmation(user: User): Unit
+    def showRemoveConfirmation(userId: UserId): Unit
 
     def getCurrentPickerDestination: IPickUserController.Destination
   }

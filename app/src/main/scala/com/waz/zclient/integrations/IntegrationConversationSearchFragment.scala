@@ -41,7 +41,7 @@ import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController.Destination
 import com.waz.zclient.usersearch.views.SearchEditText
 import com.waz.zclient.utils.ContextUtils.showToast
-import com.waz.zclient.utils.{ConversationMembersSignal, RichView, UiStorage}
+import com.waz.zclient.utils.{RichView, UiStorage}
 import com.waz.zclient.{FragmentHelper, R, ViewHelper}
 
 import scala.concurrent.Future

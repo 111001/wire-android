@@ -55,9 +55,9 @@ class ParticipantDetailsTab(val context: Context, val attrs: AttributeSet, val d
   private val userId = Signal[UserId]()
 
   private val isGuest = for{
-    z <- inject[Signal[ZMessaging]]
-    uId <- userId
-    data <- z.users.userSignal(uId)
+    z       <- inject[Signal[ZMessaging]]
+    uId     <- userId
+    data    <- z.users.userSignal(uId)
     isGuest <- if (data.isWireBot) Signal.const(false) else z.teams.isGuest(uId)
   } yield isGuest
 
@@ -80,7 +80,7 @@ class ParticipantDetailsTab(val context: Context, val attrs: AttributeSet, val d
   }
 
   def setUser(user: User): Unit = {
-    Option(user).fold{
+    Option(user).fold {
       imageAssetImageView.resetBackground()
     }{ user =>
       imageAssetImageView.connectImageAsset(user.getPicture)
@@ -96,4 +96,7 @@ class ParticipantDetailsTab(val context: Context, val attrs: AttributeSet, val d
       v.setRightActionLabelText(getContext.getString(rightActionLabel))
       v.setCallback(callback)
     }
+
 }
+
+

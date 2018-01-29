@@ -24,6 +24,7 @@ import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.IntegrationId;
 import com.waz.model.ProviderId;
+import com.waz.model.UserId;
 import com.waz.zclient.pages.main.conversation.controller.ConversationScreenControllerObserver;
 import com.waz.zclient.pages.main.conversation.controller.IConversationScreenController;
 import com.waz.zclient.pages.main.participants.dialog.DialogLaunchMode;
@@ -65,7 +66,7 @@ public class StubConversationScreenController implements IConversationScreenCont
     }
 
     @Override
-    public void showUser(User user) {
+    public void showUser(UserId userId) {
 
     }
 
@@ -109,10 +110,6 @@ public class StubConversationScreenController implements IConversationScreenCont
         return null;
     }
 
-    @Override
-    public void onScrollParticipantsList(int verticalOffset, boolean scrolledToBottom) {
-
-    }
 
     @Override
     public DialogLaunchMode getPopoverLaunchMode() {
@@ -157,11 +154,6 @@ public class StubConversationScreenController implements IConversationScreenCont
     @Override
     public void setSingleConversation(boolean isSingleConversation) {
 
-    }
-
-    @Override
-    public boolean isSingleConversation() {
-        return false;
     }
 
     @Override

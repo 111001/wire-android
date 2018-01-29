@@ -63,6 +63,7 @@ import com.waz.zclient.notifications.controllers.{CallingNotificationsController
 import com.waz.zclient.pages.main.conversation.controller.IConversationScreenController
 import com.waz.zclient.pages.main.conversationpager.controller.ISlidingPaneController
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
+import com.waz.zclient.participants.ParticipantsController
 import com.waz.zclient.preferences.PreferencesController
 import com.waz.zclient.tracking.{CallingTrackingController, CrashController, GlobalTrackingController, UiTrackingController}
 import com.waz.zclient.utils.{BackStackNavigator, BackendPicker, Callback, UiStorage}
@@ -133,11 +134,12 @@ object WireApplication {
 
     bind [SharingController]               to new SharingController()
     bind [ConversationController]          to new ConversationController()
-    bind [NavigationController]      to new NavigationController()
-    bind [AppEntryController]        to new AppEntryController()
-    bind [SignInController]          to new SignInController()
-    bind [InvitationsController]     to new InvitationsController()
-
+    bind [NavigationController]            to new NavigationController()
+    bind [AppEntryController]              to new AppEntryController()
+    bind [SignInController]                to new SignInController()
+    bind [InvitationsController]           to new InvitationsController()
+    bind [IntegrationDetailsController]    to new IntegrationDetailsController()
+    bind [IntegrationsController]          to new IntegrationsController()
 
     // current conversation data
     bind [Signal[ConversationData]] to inject[ConversationController].currentConv
@@ -168,8 +170,7 @@ object WireApplication {
     bind [AssetsController]          to new AssetsController()
     bind [BrowserController]         to new BrowserController()
     bind [MessageViewFactory]        to new MessageViewFactory()
-    bind [UsersController]           to new UsersController()
-    bind [IntegrationsController]    to new IntegrationsController()
+
     bind [ScreenController]          to new ScreenController()
     bind [MessageActionsController]  to new MessageActionsController()
     bind [MessagesController]        to new MessagesController()
@@ -178,9 +179,10 @@ object WireApplication {
     bind [UiStorage]                 to new UiStorage()
     bind [BackStackNavigator]        to new BackStackNavigator()
 
-    bind [CursorController]             to new CursorController()
-    bind [ConversationListController]   to new ConversationListController()
-    bind [IntegrationDetailsController] to new IntegrationDetailsController()
+    bind [CursorController]           to new CursorController()
+    bind [ConversationListController] to new ConversationListController()
+    bind [ParticipantsController]          to new ParticipantsController()
+    bind [UsersController]           to new UsersController()
 
     /**
       * Since tracking controllers will immediately instantiate other necessary controllers, we keep them separated

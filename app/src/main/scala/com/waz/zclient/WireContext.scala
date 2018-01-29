@@ -146,6 +146,8 @@ trait FragmentHelper extends Fragment with ViewFinder with Injectable with Event
     h
   }
 
+
+
   override def onDestroyView() = {
     super.onDestroyView()
     views foreach(_.clear())

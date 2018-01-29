@@ -28,6 +28,7 @@ import android.widget.TextView;
 import com.waz.api.IConversation;
 import com.waz.api.User;
 import com.waz.model.ConvId;
+import com.waz.model.UserId;
 import com.waz.zclient.R;
 import com.waz.zclient.common.views.UserDetailsView;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
@@ -169,7 +170,6 @@ public class BlockedUserProfileFragment extends BaseFragment<BlockedUserProfileF
         footerMenu.setVisibility(View.GONE);
         unblockButton.setVisibility(View.GONE);
         separatorLine.setVisibility(View.GONE);
-        unblockButton.setVisibility(View.GONE);
 
         View backgroundContainer = ViewUtils.getView(view, R.id.fl__blocked_user__background_container);
         if ((LayoutSpec.isPhone(getActivity()) && getControllerFactory().getNavigationController().getPagerPosition() == NavigationController.FIRST_PAGE) ||
@@ -306,6 +306,7 @@ public class BlockedUserProfileFragment extends BaseFragment<BlockedUserProfileF
 
         // Hook up callbacks
         footerMenu.setLeftActionLabelText(getString(R.string.connect_request__footer__blocked_label));
+        footerMenu.setLeftActionText(getString(R.string.glyph__block));
         footerMenu.setRightActionText(getString(R.string.glyph__minus));
         footerMenu.setCallback(new FooterMenuCallback() {
             @Override
@@ -315,7 +316,7 @@ public class BlockedUserProfileFragment extends BaseFragment<BlockedUserProfileF
 
             @Override
             public void onRightActionClicked() {
-                getContainer().showRemoveConfirmation(user);
+                getContainer().showRemoveConfirmation(new UserId(user.getId()));
             }
         });
 

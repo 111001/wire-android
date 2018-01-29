@@ -31,6 +31,7 @@ import com.waz.api.UpdateListener;
 import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.ConversationData;
+import com.waz.model.UserId;
 import com.waz.zclient.R;
 import com.waz.zclient.common.views.UserDetailsView;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
@@ -300,7 +301,7 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
 
             @Override
             public void onRightActionClicked() {
-                getContainer().showRemoveConfirmation(user);
+                getContainer().showRemoveConfirmation(new UserId(user.getId()));
             }
         });
 

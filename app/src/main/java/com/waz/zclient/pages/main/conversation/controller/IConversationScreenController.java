@@ -24,6 +24,7 @@ import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.IntegrationId;
 import com.waz.model.ProviderId;
+import com.waz.model.UserId;
 import com.waz.zclient.pages.main.participants.dialog.DialogLaunchMode;
 
 public interface IConversationScreenController {
@@ -50,17 +51,13 @@ public interface IConversationScreenController {
 
     void setParticipantHeaderHeight(int participantHeaderHeight);
 
-    void onScrollParticipantsList(int verticalOffset, boolean scrolledToBottom);
-
-    boolean isSingleConversation();
-
     void setSingleConversation(boolean isSingleConversation);
 
     void setMemberOfConversation(boolean isMemberOfConversation);
 
     void addPeopleToConversation();
 
-    void showUser(User user);
+    void showUser(UserId userId);
 
     void hideUser();
 

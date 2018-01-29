@@ -22,8 +22,8 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import com.waz.api.NetworkMode;
-import com.waz.api.User;
 import com.waz.model.ConvId;
+import com.waz.model.UserId;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
 import com.waz.zclient.controllers.navigation.Page;
@@ -110,11 +110,11 @@ public class PendingConnectRequestManagerFragment extends BaseFragment<PendingCo
     }
 
     @Override
-    public void showRemoveConfirmation(final User user) {
+    public void showRemoveConfirmation(final UserId userId) {
         getStoreFactory().networkStore().doIfHasInternetOrNotifyUser(new NetworkAction() {
             @Override
             public void execute(NetworkMode networkMode) {
-                getContainer().showRemoveConfirmation(user);
+                getContainer().showRemoveConfirmation(userId);
             }
 
             @Override

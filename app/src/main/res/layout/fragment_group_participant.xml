@@ -54,6 +54,7 @@
             app:leftActionText="@string/glyph__add_people"
             app:rightActionText="@string/glyph__more"
             app:leftActionLabelText="@string/conversation__action__add_people"
+            android:visibility="gone"
             />
 
     </LinearLayout>
@@ -85,6 +86,7 @@
         android:textAllCaps="true"
         android:textSize="@dimen/wire__text_size__small"
         android:textColor="@color/text__primary_light"
+        android:visibility="gone"
         />
 
 

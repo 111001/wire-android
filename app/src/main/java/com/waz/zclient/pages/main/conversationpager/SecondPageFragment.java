@@ -27,7 +27,6 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import com.waz.api.IConversation;
-import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.ConversationData;
 import com.waz.model.UserId;
@@ -301,7 +300,7 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
     }
 
     @Override
-    public void showRemoveConfirmation(User user) {
+    public void showRemoveConfirmation(UserId userId) {
 
     }
 

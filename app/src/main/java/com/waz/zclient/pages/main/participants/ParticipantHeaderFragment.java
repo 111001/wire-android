@@ -43,6 +43,7 @@ import com.waz.api.Verification;
 import com.waz.model.ConvId;
 import com.waz.model.IntegrationId;
 import com.waz.model.ProviderId;
+import com.waz.model.UserId;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.R;
 import com.waz.zclient.common.controllers.ThemeController;
@@ -451,7 +452,7 @@ public class ParticipantHeaderFragment extends BaseFragment<ParticipantHeaderFra
     }
 
     @Override
-    public void onShowUser(User user) {
+    public void onShowUser(UserId userId) {
 
     }
 
@@ -570,8 +571,6 @@ public class ParticipantHeaderFragment extends BaseFragment<ParticipantHeaderFra
     }
 
     public interface Container {
-
-        void onClickedEmptyBackground();
 
         void dismissDialog();
     }

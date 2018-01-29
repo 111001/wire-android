@@ -83,7 +83,6 @@ class PickUsersAdapter(topUsersOnItemTouchListener: SearchResultOnItemTouchListe
 
   integrationsController.searchIntegrations.throttle(500.millis).on(Threading.Ui) {
     case Some(newIntegrations) =>
-      verbose(s"IN we're having some new integrations! ${newIntegrations.map(_.name)}")
       integrations = newIntegrations
       updateMergedResults()
     case _ =>
@@ -180,7 +179,7 @@ class PickUsersAdapter(topUsersOnItemTouchListener: SearchResultOnItemTouchListe
       addConnections()
     }
 
-    ZLog.debug(s"IN Merged contacts updated: ${mergedResult.size}")
+    ZLog.debug(s"Merged contacts updated: ${mergedResult.size}")
     notifyDataSetChanged()
   }
 

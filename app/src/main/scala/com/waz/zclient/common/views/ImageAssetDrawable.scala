@@ -21,7 +21,6 @@ import android.animation.ValueAnimator
 import android.animation.ValueAnimator.AnimatorUpdateListener
 import android.graphics._
 import android.graphics.drawable.Drawable
-import com.waz.ZLog
 import com.waz.ZLog.ImplicitTag._
 import com.waz.content.UserPreferences
 import com.waz.model.AssetData.{IsImage, IsVideo}

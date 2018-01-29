@@ -70,6 +70,7 @@ import com.waz.zclient.pages.main.conversationlist.ConversationListAnimation
 import com.waz.zclient.pages.main.conversationpager.controller.SlidingPaneObserver
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
 import com.waz.zclient.pages.main.profile.camera.CameraContext
+import com.waz.zclient.participants.ParticipantsController
 import com.waz.zclient.ui.animation.interpolators.penner.Expo
 import com.waz.zclient.ui.cursor.CursorMenuItem
 import com.waz.zclient.ui.utils.KeyboardUtils
@@ -89,6 +90,7 @@ class ConversationFragment extends BaseFragment[ConversationFragment.Container] 
   private lazy val convController       = inject[ConversationController]
   private lazy val collectionController = inject[CollectionController]
   private lazy val permissions          = inject[PermissionsService]
+  private lazy val participantsController = inject[ParticipantsController]
 
   private val previewShown = Signal(false)
   private lazy val convChange = convController.convChanged.filter { _.to.isDefined }
@@ -250,8 +252,10 @@ class ConversationFragment extends BaseFragment[ConversationFragment.Container] 
     super.onStart()
 
     toolbar.setOnClickListener(new View.OnClickListener() {
-      override def onClick(v: View): Unit =
+      override def onClick(v: View): Unit = {
         getControllerFactory.getConversationScreenController.showParticipants(toolbar, false)
+        participantsController.showParticipantsRequest ! (toolbar, false)
+      }
     })
 
     toolbar.setOnMenuItemClickListener(new Toolbar.OnMenuItemClickListener() {
@@ -766,7 +770,11 @@ class ConversationFragment extends BaseFragment[ConversationFragment.Container] 
 
             override def onHideAnimationEnd(confirmed: Boolean, cancelled: Boolean, checkboxIsSelected: Boolean): Unit = if (!confirmed && !cancelled) {
               if (onlySelfChanged) getContext.startActivity(ShowDevicesIntent(getActivity))
-              else getControllerFactory.getConversationScreenController.showParticipants(ViewUtils.getView(getActivity, R.id.cursor_menu_item_participant), true)
+              else {
+                val view = findById[View](R.id.cursor_menu_item_participant)
+                getControllerFactory.getConversationScreenController.showParticipants(view, true)
+                participantsController.showParticipantsRequest ! (view, true)
+              }
             }
 
             override def negativeButtonClicked(): Unit = {}

@@ -17,7 +17,7 @@
  */
 package com.waz.zclient.pages.main.connect;
 
-import com.waz.api.User;
+import com.waz.model.UserId;
 
 public interface UserProfileContainer {
 
@@ -25,5 +25,5 @@ public interface UserProfileContainer {
 
     void dismissSingleUserProfile();
 
-    void showRemoveConfirmation(User user);
+    void showRemoveConfirmation(UserId userId);
 }

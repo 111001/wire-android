@@ -24,6 +24,7 @@ import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.IntegrationId;
 import com.waz.model.ProviderId;
+import com.waz.model.UserId;
 import com.waz.zclient.pages.main.participants.dialog.DialogLaunchMode;
 
 import java.util.HashSet;
@@ -122,18 +123,6 @@ public class ConversationScreenController implements IConversationScreenControll
     }
 
     @Override
-    public void onScrollParticipantsList(int verticalOffset, boolean scrolledToBottom) {
-        for (ConversationScreenControllerObserver conversationScreenControllerObserver : conversationScreenControllerObservers) {
-            conversationScreenControllerObserver.onScrollParticipantsList(verticalOffset, scrolledToBottom);
-        }
-    }
-
-    @Override
-    public boolean isSingleConversation() {
-        return isSingleConversation;
-    }
-
-    @Override
     public void setSingleConversation(boolean isSingleConversation) {
         this.isSingleConversation = isSingleConversation;
     }
@@ -151,13 +140,13 @@ public class ConversationScreenController implements IConversationScreenControll
     }
 
     @Override
-    public void showUser(User user) {
-        if (user == null || isShowingUser) {
+    public void showUser(UserId userId) {
+        if (userId == null || isShowingUser) {
             return;
         }
         isShowingUser = true;
         for (ConversationScreenControllerObserver observer : conversationScreenControllerObservers) {
-            observer.onShowUser(user);
+            observer.onShowUser(userId);
         }
     }
 

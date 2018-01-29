@@ -27,6 +27,7 @@ import android.view.animation.Animation;
 import android.widget.TextView;
 import com.waz.api.IConversation;
 import com.waz.api.User;
+import com.waz.model.UserId;
 import com.waz.zclient.R;
 import com.waz.zclient.common.controllers.UserAccountsController;
 import com.waz.zclient.common.views.UserDetailsView;
@@ -250,7 +251,7 @@ public class SendConnectRequestFragment extends BaseFragment<SendConnectRequestF
             @Override
             public void onRightActionClicked() {
                 if (userRequester == IConnectStore.UserRequester.PARTICIPANTS && permissionToRemove) {
-                    getContainer().showRemoveConfirmation(user);
+                    getContainer().showRemoveConfirmation(new UserId(user.getId()));
                 }
             }
         });
@@ -294,6 +295,6 @@ public class SendConnectRequestFragment extends BaseFragment<SendConnectRequestF
     public interface Container extends UserProfileContainer {
         void onConnectRequestWasSentToUser();
 
-        void showRemoveConfirmation(User user);
+        void showRemoveConfirmation(UserId userId);
     }
 }

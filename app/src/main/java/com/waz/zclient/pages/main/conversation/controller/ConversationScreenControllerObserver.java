@@ -24,6 +24,7 @@ import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.IntegrationId;
 import com.waz.model.ProviderId;
+import com.waz.model.UserId;
 
 public interface ConversationScreenControllerObserver {
 
@@ -37,7 +38,7 @@ public interface ConversationScreenControllerObserver {
 
     void onScrollParticipantsList(int verticalOffset, boolean scrolledToBottom);
 
-    void onShowUser(User user);
+    void onShowUser(UserId userId);
 
     void onHideUser();
 

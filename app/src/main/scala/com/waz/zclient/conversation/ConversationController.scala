@@ -120,7 +120,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   def loadMembers(convId: ConvId): Future[Seq[UserData]] = for {
     z <- zms.head
-    userIds <- z.membersStorage.activeMembers(convId).head
+    userIds <- z.membersStorage.activeMembers(convId).head // TODO: maybe switch to ConversationsMembersSignal
     users <- z.users.getUsers(userIds.toSeq)
   } yield users
 
@@ -149,6 +149,9 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   } yield z.convsUi.setConversationName(convId, name)
 
   def addMembers(id: ConvId, users: Set[UserId]): Future[Unit] = zms.head.map { _.convsUi.addConversationMembers(id, users.toSeq) }
+
+  def addMembersToCurrentConv(users: Set[UserId]): Future[Unit] =
+    currentConvId.head.flatMap { convId => addMembers(convId, users) }
 
   def removeMember(user: UserId): Future[Unit] = for {
     z <- zms.head
@@ -182,8 +185,17 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   def knock(id: ConvId): Unit = zms(_.convsUi.knock(id))
 
-  def createGroupConversation(users: Seq[UserId], localId: ConvId = ConvId()): Future[ConversationData] =
-    zms.head.flatMap { _.convsUi.createGroupConversation(localId, users) }
+  def createGroupConversation(users: Seq[UserId], conversationChangerSender: ConversationChangeRequester, localId: ConvId = ConvId()): Future[ConversationData] =
+    zms.head.flatMap { _.convsUi.createGroupConversation(localId, users) }.map { data =>
+      selectConv(Some(data.id),
+        if (conversationChangerSender != ConversationChangeRequester.START_CONVERSATION_FOR_CALL &&
+          conversationChangerSender != ConversationChangeRequester.START_CONVERSATION_FOR_VIDEO_CALL &&
+          conversationChangerSender != ConversationChangeRequester.START_CONVERSATION_FOR_CAMERA) ConversationChangeRequester.START_CONVERSATION
+        else conversationChangerSender
+      )
+      data
+    }
+
 
   // TODO: remove when not used anymore
   def iConv(id: ConvId): IConversation = convStore.getConversation(id.str)
@@ -207,19 +219,25 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   def withMembers(convId: ConvId, callback: Callback[java.util.Collection[UserData]]): Unit =
     loadMembers(convId).foreach { users => callback.callback(users.asJavaCollection) }(Threading.Ui)
+
   def withCurrentConvMembers(callback: Callback[java.util.Collection[UserData]]): Unit =
     currentConvId.head.foreach { id => withMembers(id, callback) }(Threading.Ui)
+
+  def isCurrentConvGroupOrWithBot(callback: Callback[java.lang.Boolean]): Unit =
+    (for {
+      conv           <- currentConv.head
+      group          <- isGroup(conv)
+      groupOrWithBot <- if (group) Future.successful(true) else isOneToOneBot(conv)
+    } yield groupOrWithBot)
+      .foreach { groupOrWithBot => callback.callback(groupOrWithBot) }(Threading.Ui)
+
   def addMembers(id: ConvId, users: java.util.List[UserId]): Unit = addMembers(id, users.asScala.toSet)
 
+  def addMembersToCurrentConv(users: java.util.List[UserId]): Unit =
+    addMembersToCurrentConv(users.asScala.toSet)
+
   def createGroupConversation(users: java.util.List[UserId], conversationChangerSender: ConversationChangeRequester): Unit =
-    createGroupConversation(users.asScala).map { data =>
-      selectConv(Some(data.id),
-        if (conversationChangerSender != ConversationChangeRequester.START_CONVERSATION_FOR_CALL &&
-          conversationChangerSender != ConversationChangeRequester.START_CONVERSATION_FOR_VIDEO_CALL &&
-          conversationChangerSender != ConversationChangeRequester.START_CONVERSATION_FOR_CAMERA) ConversationChangeRequester.START_CONVERSATION
-        else conversationChangerSender
-      )
-    }
+    createGroupConversation(users.asScala, conversationChangerSender)
 
   object messages {
 

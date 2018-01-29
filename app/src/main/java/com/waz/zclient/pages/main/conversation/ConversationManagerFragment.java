@@ -31,7 +31,6 @@ import com.waz.api.MessageContent;
 import com.waz.api.OtrClient;
 import com.waz.api.User;
 import com.waz.model.ConvId;
-import com.waz.model.ConversationData;
 import com.waz.model.IntegrationId;
 import com.waz.model.MessageData;
 import com.waz.model.ProviderId;
@@ -54,13 +53,13 @@ import com.waz.zclient.integrations.IntegrationDetailsFragment;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.pages.main.conversation.controller.ConversationScreenControllerObserver;
 import com.waz.zclient.pages.main.drawing.DrawingFragment;
-import com.waz.zclient.pages.main.participants.ParticipantFragment;
 import com.waz.zclient.pages.main.participants.SingleParticipantFragment;
-import com.waz.zclient.pages.main.participants.TabbedParticipantBodyFragment;
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController;
 import com.waz.zclient.pages.main.pickuser.controller.PickUserControllerScreenObserver;
 import com.waz.zclient.pages.main.profile.camera.CameraContext;
 import com.waz.zclient.pages.main.profile.camera.CameraFragment;
+import com.waz.zclient.participants.fragments.ParticipantsFragment;
+import com.waz.zclient.participants.fragments.TabbedParticipantBodyFragment;
 import com.waz.zclient.ui.utils.KeyboardUtils;
 import com.waz.zclient.usersearch.PickUserFragment;
 import com.waz.zclient.utils.Callback;
@@ -71,7 +70,7 @@ import com.waz.zclient.views.LoadingIndicatorView;
 
 import java.util.List;
 
-public class ConversationManagerFragment extends BaseFragment<ConversationManagerFragment.Container> implements ParticipantFragment.Container,
+public class ConversationManagerFragment extends BaseFragment<ConversationManagerFragment.Container> implements ParticipantsFragment.Container,
                                                                                                                 LikesListFragment.Container,
                                                                                                                 OnBackPressedListener,
                                                                                                                 ConversationScreenControllerObserver,
@@ -219,7 +218,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
             return true;
         }
 
-        if (fragment instanceof ParticipantFragment) {
+        if (fragment instanceof ParticipantsFragment) {
             getControllerFactory().getConversationScreenController().hideParticipants(true, false);
             return true;
         }
@@ -262,17 +261,17 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
                                  R.anim.open_new_conversation__thread_list_in,
                                  R.anim.slide_out_to_bottom_pick_user)
             .replace(R.id.fl__conversation_manager__message_list_container,
-                     ParticipantFragment.newInstance(IConnectStore.UserRequester.PARTICIPANTS,
-                         showDeviceTabIfSingle ? TabbedParticipantBodyFragment.DEVICE_PAGE : TabbedParticipantBodyFragment.USER_PAGE),
-                     ParticipantFragment.TAG)
-            .addToBackStack(ParticipantFragment.TAG)
+                     ParticipantsFragment.newInstance(IConnectStore.UserRequester.PARTICIPANTS,
+                         showDeviceTabIfSingle ? TabbedParticipantBodyFragment.DEVICE_PAGE() : TabbedParticipantBodyFragment.USER_PAGE()),
+                     ParticipantsFragment.TAG())
+            .addToBackStack(ParticipantsFragment.TAG())
             .commit();
     }
 
     @Override
     public void onHideParticipants(boolean backOrCloseButtonPressed, boolean hideByConversationChange, boolean isSingleConversation) {
         this.getControllerFactory().getNavigationController().setRightPage(Page.MESSAGE_STREAM, TAG);
-        getChildFragmentManager().popBackStack(ParticipantFragment.TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE);
+        getChildFragmentManager().popBackStack(ParticipantsFragment.TAG(), FragmentManager.POP_BACK_STACK_INCLUSIVE);
     }
 
     @Override
@@ -290,7 +289,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
     }
 
     @Override
-    public void onShowUser(User user) {
+    public void onShowUser(UserId userId) {
         if (LayoutSpec.isPhone(getContext())) {
             KeyboardUtils.hideKeyboard(getActivity());
         }
@@ -449,7 +448,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
     }
 
     @Override
-    public void showRemoveConfirmation(User user) {
+    public void showRemoveConfirmation(UserId userId) {
 
     }
 
@@ -516,12 +515,12 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
         // TODO https://wearezeta.atlassian.net/browse/AN-3730
         getControllerFactory().getPickUserController().hidePickUser(getCurrentPickerDestination());
 
-        final ConversationController conversationController = inject(ConversationController.class);
-        conversationController.withCurrentConv(new Callback<ConversationData>() {
+        final ConversationController convController = inject(ConversationController.class);
+        convController.isCurrentConvGroupOrWithBot(new Callback<Boolean>() {
             @Override
-            public void callback(ConversationData conv) {
-                if (conv.convType() == IConversation.Type.ONE_TO_ONE) {
-                    conversationController.createGroupConversation(users, requester);
+            public void callback(Boolean groupOrWithBot) {
+                if (!groupOrWithBot) {
+                    convController.createGroupConversation(users, requester);
                     if (!getStoreFactory().networkStore().hasInternetConnection()) {
                         ViewUtils.showAlertDialog(getActivity(),
                             R.string.conversation__create_group_conversation__no_network__title,
@@ -529,8 +528,8 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
                             R.string.conversation__create_group_conversation__no_network__button,
                             null, true);
                     }
-                } else if (conv.convType() == IConversation.Type.GROUP) {
-                    conversationController.addMembers(conv.id(), users);
+                } else {
+                    convController.addMembersToCurrentConv(users);
                     if (!getStoreFactory().networkStore().hasInternetConnection()) {
                         ViewUtils.showAlertDialog(getActivity(),
                             R.string.conversation__add_user__no_network__title,
@@ -573,7 +572,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
                                  R.anim.open_new_conversation__thread_list_in,
                                  R.anim.slide_out_to_bottom_pick_user)
             .replace(R.id.fl__conversation_manager__message_list_container,
-                     PickUserFragment.newInstance(true, groupConversation, inject(ConversationController.class).getCurrentConvId().str()),
+                     PickUserFragment.newInstance(true, inject(ConversationController.class).getCurrentConvId().str()),
                      PickUserFragment.TAG())
             .addToBackStack(PickUserFragment.TAG())
             .commit();

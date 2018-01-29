@@ -20,13 +20,11 @@ package com.waz.zclient.participants
 import android.content.Context
 import android.support.v7.widget.RecyclerView
 import android.view.{LayoutInflater, View, ViewGroup}
-import android.widget.{AbsListView, TextView}
+import android.widget.TextView
 import com.waz.model.UserId
 import com.waz.service.ZMessaging
 import com.waz.utils.events.{EventContext, EventStream, Signal, SourceStream}
-import com.waz.utils.returning
 import com.waz.zclient.common.views.ChatheadWithTextFooter
-import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.utils.ViewUtils
 import com.waz.zclient.{Injectable, Injector, R}
 
@@ -34,8 +32,8 @@ class ParticipantsChatheadAdapter(numOfColumns: Int)(implicit context: Context, 
   extends RecyclerView.Adapter[ParticipantsChatheadAdapter.ViewHolder] with Injectable {
   import ParticipantsChatheadAdapter._
 
-  private lazy val convController = inject[ConversationController]
   private lazy val zms = inject[Signal[ZMessaging]]
+  private lazy val participantsController = inject[ParticipantsController]
 
   private var items = List.empty[Either[UserId, Int]]
 
@@ -43,10 +41,8 @@ class ParticipantsChatheadAdapter(numOfColumns: Int)(implicit context: Context, 
 
   private lazy val users = for {
     z       <- zms
-    convId  <- convController.currentConvId
-    userIds <- z.membersStorage.activeMembers(convId)
-    selfId  <- z.users.selfUser.map(_.id)
-    users   <- Signal.sequence(userIds.filterNot(_ == selfId).map(z.users.userSignal).toSeq: _*)
+    userIds <- participantsController.otherParticipants
+    users   <- Signal.sequence(userIds.filterNot(_ == z.selfUserId).map(z.users.userSignal).toSeq: _*)
   } yield users
 
   private lazy val positions = users.map { users =>
@@ -54,16 +50,12 @@ class ParticipantsChatheadAdapter(numOfColumns: Int)(implicit context: Context, 
     val (verified, unverified) = people.partition(_.isVerified)
 
     unverified.map(data => Left(data.id)) :::
-      (if (verified.nonEmpty)
-        Right(SEPARATOR_VERIFIED) :: verified.map(data => Left(data.id))
-       else
-        List.empty[Either[UserId, Int]]
-      ) :::
-      (if (bots.nonEmpty)
-        Right(SEPARATOR_BOTS) :: bots.map(data => Left(data.id))
-       else
-        List.empty[Either[UserId, Int]]
-      )
+      (if (unverified.nonEmpty && verified.nonEmpty) List(Right(SEPARATOR_VERIFIED))
+       else Nil
+      ) ::: verified.map(data => Left(data.id)) :::
+      (if ((unverified.nonEmpty || verified.nonEmpty) && bots.nonEmpty) List(Right(SEPARATOR_BOTS))
+       else Nil
+      ) ::: bots.map(data => Left(data.id))
   }
 
   positions.onUi { list =>
@@ -130,7 +122,6 @@ object ParticipantsChatheadAdapter {
   }
 
   class SeparatorViewHolder(separator: View) extends ViewHolder(separator) {
-
     def setTitle(title: Int): Unit =
       ViewUtils.getView[TextView](separator, R.id.separator_title).setText(title)
   }

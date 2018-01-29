@@ -72,13 +72,13 @@ import com.waz.zclient.pages.main.conversationpager.SlidingPaneLayout;
 import com.waz.zclient.pages.main.conversationpager.controller.SlidingPaneObserver;
 import com.waz.zclient.pages.main.drawing.DrawingFragment;
 import com.waz.zclient.pages.main.giphy.GiphySharingPreviewFragment;
-import com.waz.zclient.pages.main.participants.TabbedParticipantBodyFragment;
 import com.waz.zclient.pages.main.participants.dialog.DialogLaunchMode;
 import com.waz.zclient.pages.main.participants.dialog.ParticipantsDialogFragment;
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController;
 import com.waz.zclient.pages.main.pickuser.controller.PickUserControllerScreenObserver;
 import com.waz.zclient.pages.main.profile.camera.CameraContext;
 import com.waz.zclient.pages.main.profile.camera.CameraFragment;
+import com.waz.zclient.participants.fragments.TabbedParticipantBodyFragment;
 import com.waz.zclient.ui.animation.interpolators.penner.Quart;
 import com.waz.zclient.ui.utils.KeyboardUtils;
 import com.waz.zclient.ui.utils.MathUtils;
@@ -588,7 +588,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
         } else {
             getControllerFactory().getConversationScreenController().setPopoverLaunchedMode(DialogLaunchMode.PARTICIPANT_BUTTON);
         }
-        int firstPage = (isSingleConversation && showDeviceTabSingle) ? TabbedParticipantBodyFragment.DEVICE_PAGE : TabbedParticipantBodyFragment.USER_PAGE;
+        int firstPage = (isSingleConversation && showDeviceTabSingle) ? TabbedParticipantBodyFragment.DEVICE_PAGE() : TabbedParticipantBodyFragment.USER_PAGE();
         getChildFragmentManager().beginTransaction()
                                  .replace(R.id.fl__root__participant_container,
                                          ParticipantsDialogFragment.newParticipantButtonInstance(
@@ -623,7 +623,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
     }
 
     @Override
-    public void onShowUser(User user) {
+    public void onShowUser(UserId userId) {
 
     }
 
@@ -801,7 +801,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
     }
 
     @Override
-    public void showRemoveConfirmation(User user) {
+    public void showRemoveConfirmation(UserId userId) {
 
     }
 

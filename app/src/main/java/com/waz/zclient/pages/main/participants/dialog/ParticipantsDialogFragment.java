@@ -43,7 +43,6 @@ import com.waz.api.OtrClient;
 import com.waz.api.User;
 import com.waz.api.UsersList;
 import com.waz.model.ConvId;
-import com.waz.model.ConversationData;
 import com.waz.model.IntegrationId;
 import com.waz.model.ProviderId;
 import com.waz.model.UserId;
@@ -65,11 +64,11 @@ import com.waz.zclient.pages.main.connect.PendingConnectRequestManagerFragment;
 import com.waz.zclient.pages.main.connect.SendConnectRequestFragment;
 import com.waz.zclient.pages.main.conversation.controller.ConversationScreenControllerObserver;
 import com.waz.zclient.pages.main.conversation.controller.IConversationScreenController;
-import com.waz.zclient.pages.main.participants.ParticipantFragment;
 import com.waz.zclient.pages.main.participants.SingleParticipantFragment;
-import com.waz.zclient.pages.main.participants.TabbedParticipantBodyFragment;
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController;
 import com.waz.zclient.pages.main.pickuser.controller.PickUserControllerScreenObserver;
+import com.waz.zclient.participants.fragments.ParticipantsFragment;
+import com.waz.zclient.participants.fragments.TabbedParticipantBodyFragment;
 import com.waz.zclient.ui.animation.HeightEvaluator;
 import com.waz.zclient.ui.animation.interpolators.penner.Quart;
 import com.waz.zclient.ui.utils.KeyboardUtils;
@@ -85,7 +84,7 @@ import java.util.List;
 
 public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogFragment.Container> implements
                                                                                                    ParticipantsStoreObserver,
-                                                                                                   ParticipantFragment.Container,
+                                                                                                   ParticipantsFragment.Container,
                                                                                                    OnBackPressedListener,
                                                                                                    ConversationScreenControllerObserver,
                                                                                                    KeyboardHeightObserver,
@@ -142,7 +141,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
         args.putInt(ARG_POS_Y, y);
         args.putParcelable(ARG_ANCHOR_RECT, rect);
         args.putString(ARG_USER_ID, userId.str());
-        args.putInt(ARG__FIRST__PAGE, TabbedParticipantBodyFragment.USER_PAGE);
+        args.putInt(ARG__FIRST__PAGE, TabbedParticipantBodyFragment.USER_PAGE());
         participantsDialogFragment.setArguments(args);
         return participantsDialogFragment;
     }
@@ -367,15 +366,14 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
             if (getArguments().getBoolean(ARG__ADD_TO_CONVERSATION)) {
                 transaction.replace(R.id.fl__participant_dialog__main__container,
                                     PickUserFragment.newInstance(true,
-                                                                 getArguments().getBoolean(ARG__GROUP_CONVERSATION),
-                                                                 inject(ConversationController.class).getCurrentConvId().str()),
+                                        inject(ConversationController.class).getCurrentConvId().str()),
                                     PickUserFragment.TAG());
 
             } else if (getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.PARTICIPANT_BUTTON ||
                 getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.CONVERSATION_TOOLBAR) {
                 transaction.add(R.id.fl__participant_dialog__main__container,
-                                ParticipantFragment.newInstance(IConnectStore.UserRequester.PARTICIPANTS, firstPage),
-                                ParticipantFragment.TAG);
+                                ParticipantsFragment.newInstance(IConnectStore.UserRequester.PARTICIPANTS, firstPage),
+                                ParticipantsFragment.TAG());
             } else if (getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.CONVERSATION_MENU) { // NOPMD
                 // do nothing, according to design the menu should open from bottom in conversation list
             } else {
@@ -395,8 +393,8 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
                                             SingleParticipantFragment.TAG);
                         } else {
                             transaction.add(R.id.fl__participant_dialog__main__container,
-                                            ParticipantFragment.newInstance(IConnectStore.UserRequester.POPOVER, firstPage),
-                                            ParticipantFragment.TAG);
+                                            ParticipantsFragment.newInstance(IConnectStore.UserRequester.POPOVER, firstPage),
+                                            ParticipantsFragment.TAG());
                         }
                         break;
                     case CANCELLED:
@@ -540,7 +538,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
         getControllerFactory().getConfirmationController().addConfirmationObserver(this);
         getControllerFactory().getAccentColorController().addAccentColorObserver(this);
         if (conversationScreenController.shouldShowDevicesTab()) {
-            conversationScreenController.showUser(conversationScreenController.getRequestedDeviceTabUser());
+            conversationScreenController.showUser(new UserId(conversationScreenController.getRequestedDeviceTabUser().getId()));
         }
     }
 
@@ -618,7 +616,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
 
     @Override
     public boolean onBackPressed() {
-        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
         if (fragment instanceof OnBackPressedListener && ((OnBackPressedListener) fragment).onBackPressed()) {
             return true;
         }
@@ -645,7 +643,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
 
     @Override
     public void onShowEditConversationName(boolean show) {
-        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
         if (fragment instanceof ConversationScreenControllerObserver) {
             ((ConversationScreenControllerObserver) fragment).onShowEditConversationName(show);
         }
@@ -668,7 +666,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
 
     @Override
     public void onShowOtrClient(OtrClient otrClient, User user) {
-        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
         if (fragment instanceof ConversationScreenControllerObserver) {
             ((ConversationScreenControllerObserver) fragment).onShowOtrClient(otrClient, user);
         }
@@ -676,7 +674,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
 
     @Override
     public void onShowCurrentOtrClient() {
-        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
         if (fragment instanceof ConversationScreenControllerObserver) {
             ((ConversationScreenControllerObserver) fragment).onShowCurrentOtrClient();
         }
@@ -684,7 +682,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
 
     @Override
     public void onHideOtrClient() {
-        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
         if (fragment instanceof ConversationScreenControllerObserver) {
             ((ConversationScreenControllerObserver) fragment).onHideOtrClient();
         }
@@ -701,10 +699,10 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
     }
 
     @Override
-    public void onShowUser(User user) {
-        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+    public void onShowUser(UserId userId) {
+        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
         if (fragment instanceof ConversationScreenControllerObserver) {
-            ((ConversationScreenControllerObserver) fragment).onShowUser(user);
+            ((ConversationScreenControllerObserver) fragment).onShowUser(userId);
         }
     }
 
@@ -712,7 +710,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
     public void onHideUser() {
         if (getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.PARTICIPANT_BUTTON ||
             getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.CONVERSATION_TOOLBAR) {
-            Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+            Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
             if (fragment instanceof ConversationScreenControllerObserver) {
                 ((ConversationScreenControllerObserver) fragment).onHideUser();
             }
@@ -740,7 +738,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
 
     @Override
     public void onAddPeopleToConversation() {
-        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
+        Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantsFragment.TAG());
         if (fragment instanceof ConversationScreenControllerObserver) {
             ((ConversationScreenControllerObserver) fragment).onAddPeopleToConversation();
         }
@@ -883,9 +881,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
     }
 
     @Override
-    public void showRemoveConfirmation(User user) {
-
-    }
+    public void showRemoveConfirmation(UserId user) {}
 
     @Override
     public void onUnblockedUser(ConvId restoredConversationWithUser) {
@@ -1025,10 +1021,10 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
 
         final ConversationController ctrl = inject(ConversationController.class);
 
-        ctrl.withCurrentConv(new Callback<ConversationData>() {
+        ctrl.isCurrentConvGroupOrWithBot(new Callback<Boolean>() {
             @Override
-            public void callback(ConversationData conv) {
-                if (conv.convType() == IConversation.Type.ONE_TO_ONE) {
+            public void callback(Boolean groupOrWithBot) {
+                if (!groupOrWithBot) {
                     ctrl.createGroupConversation(userIds, requester);
                     if (!getStoreFactory().networkStore().hasInternetConnection()) {
                         ViewUtils.showAlertDialog(getActivity(),
@@ -1037,8 +1033,8 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
                             R.string.conversation__create_group_conversation__no_network__button,
                             null, true);
                     }
-                } else if (conv.convType() == IConversation.Type.GROUP) {
-                    ctrl.addMembers(conv.id(), userIds);
+                } else {
+                    ctrl.addMembersToCurrentConv(userIds);
                     if (!getStoreFactory().networkStore().hasInternetConnection()) {
                         ViewUtils.showAlertDialog(getActivity(),
                             R.string.conversation__add_user__no_network__title,
