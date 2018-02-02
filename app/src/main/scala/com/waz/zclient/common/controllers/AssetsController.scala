@@ -18,6 +18,7 @@
 package com.waz.zclient.common.controllers
 
 import android.app.DownloadManager
+import android.content.pm.PackageManager
 import android.content.{Context, Intent}
 import android.support.v7.app.AppCompatDialog
 import android.text.TextUtils
@@ -35,8 +36,7 @@ import com.waz.service.assets.GlobalRecordAndPlayService.{AssetMediaKey, Content
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, EventStream, Signal}
 import com.waz.utils.returning
-import com.waz.utils.wrappers.URI
-import com.waz.zclient.common.controllers.AssetsController.PlaybackControls
+import com.waz.utils.wrappers.{AndroidURIUtil, URI}
 import com.waz.zclient.controllers.drawing.IDrawingController
 import com.waz.zclient.controllers.drawing.IDrawingController.DrawingMethod
 import com.waz.zclient.controllers.singleimage.ISingleImageController
@@ -44,7 +44,6 @@ import com.waz.zclient.core.api.scala.ModelObserver
 import com.waz.zclient.messages.MessageBottomSheetDialog.MessageAction
 import com.waz.zclient.messages.controllers.MessageActionsController
 import com.waz.zclient.ui.utils.TypefaceUtils
-import com.waz.zclient.utils.AssetUtils
 import com.waz.zclient.utils.ContextUtils._
 import com.waz.zclient.{Injectable, Injector, R}
 import org.threeten.bp.Duration
@@ -54,6 +53,7 @@ import scala.concurrent.Promise
 import scala.util.Success
 
 class AssetsController(implicit context: Context, inj: Injector, ec: EventContext) extends Injectable { controller =>
+  import AssetsController._
   import Threading.Implicits.Ui
 
   val zms = inject[Signal[ZMessaging]]
@@ -139,7 +139,7 @@ class AssetsController(implicit context: Context, inj: Injector, ec: EventContex
         asset match {
          case AssetData.IsVideo() =>
            onVideoPlayed ! asset
-           context.startActivity(AssetUtils.getOpenFileIntent(uri, asset.mime.orDefault.str))
+           context.startActivity(getOpenFileIntent(uri, asset.mime.orDefault.str))
          case _ =>
            showOpenFileDialog(uri, asset)
         }
@@ -148,8 +148,8 @@ class AssetsController(implicit context: Context, inj: Injector, ec: EventContex
     }
 
   def showOpenFileDialog(uri: URI, asset: AssetData) = {
-    val intent = AssetUtils.getOpenFileIntent(uri, asset.mime.orDefault.str)
-    val fileCanBeOpened = AssetUtils.fileTypeCanBeOpened(context.getPackageManager, intent)
+    val intent = getOpenFileIntent(uri, asset.mime.orDefault.str)
+    val fileCanBeOpened = fileTypeCanBeOpened(context.getPackageManager, intent)
 
     //TODO tidy up
     //TODO there is also a weird flash or double-dialog issue when you click outside of the dialog
@@ -232,4 +232,15 @@ object AssetsController {
 
     def setPlayHead(duration: Duration) = rPAction { case (rP, key, content, playing) => rP.setPlayhead(key, content, duration) }
   }
+
+  def getOpenFileIntent(uri: URI, mimeType: String): Intent = {
+    returning(new Intent) { i =>
+      i.setAction(Intent.ACTION_VIEW)
+      i.setDataAndType(AndroidURIUtil.unwrap(uri), mimeType)
+      i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+  }
+
+  def fileTypeCanBeOpened(manager: PackageManager, intent: Intent): Boolean =
+    manager.queryIntentActivities(intent, 0).size > 0
 }

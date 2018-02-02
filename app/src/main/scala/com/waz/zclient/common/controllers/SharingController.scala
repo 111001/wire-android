@@ -139,7 +139,7 @@ class SharingController(implicit injector: Injector, wContext: WireContext, even
 }
 
 object SharingController {
-  trait SharableContent {
+  sealed trait SharableContent {
     val uris: Seq[URI]
   }
 

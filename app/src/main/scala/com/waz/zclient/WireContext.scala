@@ -234,6 +234,8 @@ class ViewHolder[T <: View](id: Int, finder: ViewFinder) {
   def clear() = view = Option.empty
 
   def foreach(f: T => Unit): Unit = Option(get).foreach(f)
+
+  def map[A](f: T => A): Option[A] = Option(get).map(f)
 }
 
 trait PreferenceHelper extends Preference with Injectable with EventContext {

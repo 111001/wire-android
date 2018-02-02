@@ -26,10 +26,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import com.waz.api.ErrorsList;
 import com.waz.api.User;
-import com.waz.model.MessageData;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
+import com.waz.zclient.collection.controllers.CollectionController;
+import com.waz.zclient.collection.fragments.CollectionFragment;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
 import com.waz.zclient.controllers.collections.CollectionsObserver;
 import com.waz.zclient.controllers.confirmation.ConfirmationObserver;
@@ -38,11 +39,8 @@ import com.waz.zclient.controllers.confirmation.IConfirmationController;
 import com.waz.zclient.controllers.giphy.GiphyObserver;
 import com.waz.zclient.controllers.navigation.Page;
 import com.waz.zclient.controllers.singleimage.SingleImageObserver;
-import com.waz.zclient.collection.controllers.CollectionController;
-import com.waz.zclient.collection.fragments.CollectionFragment;
-import com.waz.zclient.sharing.ShareToMultipleFragment;
-import com.waz.zclient.core.stores.inappnotification.SyncErrorObserver;
 import com.waz.zclient.conversation.ImageFragment;
+import com.waz.zclient.core.stores.inappnotification.SyncErrorObserver;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.pages.main.conversation.SingleImageUserFragment;
 import com.waz.zclient.pages.main.conversationlist.ConfirmationFragment;
@@ -273,32 +271,6 @@ public class MainPhoneFragment extends BaseFragment<MainPhoneFragment.Container>
 
     @Override
     public void closeCollection() {
-    }
-
-    @Override
-    public void shareCollectionItem(MessageData messageData) {
-        getChildFragmentManager().beginTransaction()
-                                .add(R.id.fl__overlay_container,
-                                    ShareToMultipleFragment.newInstance(messageData.id()),
-                                    ShareToMultipleFragment.TAG())
-                                .addToBackStack(ShareToMultipleFragment.TAG())
-                                .commit();
-    }
-
-    @Override
-    public void closeCollectionShare() {
-        getChildFragmentManager().popBackStackImmediate(ShareToMultipleFragment.TAG(),
-            FragmentManager.POP_BACK_STACK_INCLUSIVE);
-    }
-
-    @Override
-    public void nextItemRequested() {
-
-    }
-
-    @Override
-    public void previousItemRequested() {
-
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////

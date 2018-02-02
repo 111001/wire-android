@@ -33,7 +33,6 @@ import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.ConversationData;
 import com.waz.model.IntegrationId;
-import com.waz.model.MessageData;
 import com.waz.model.ProviderId;
 import com.waz.model.UserId;
 import com.waz.zclient.OnBackPressedListener;
@@ -415,26 +414,6 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
     public void closeCollection() {
         getChildFragmentManager().popBackStack(CollectionFragment.TAG(), FragmentManager.POP_BACK_STACK_INCLUSIVE);
         getControllerFactory().getNavigationController().setRightPage(Page.MESSAGE_STREAM, TAG);
-    }
-
-    @Override
-    public void shareCollectionItem(MessageData messageData) {
-
-    }
-
-    @Override
-    public void closeCollectionShare() {
-
-    }
-
-    @Override
-    public void nextItemRequested() {
-
-    }
-
-    @Override
-    public void previousItemRequested() {
-
     }
 
     @Override

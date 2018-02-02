@@ -17,19 +17,9 @@
  */
 package com.waz.zclient.controllers.collections;
 
-import com.waz.model.MessageData;
-
 public interface CollectionsObserver {
 
     void openCollection();
 
     void closeCollection();
-
-    void shareCollectionItem(MessageData messageData);
-
-    void closeCollectionShare();
-
-    void nextItemRequested();
-
-    void previousItemRequested();
 }

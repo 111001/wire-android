@@ -74,14 +74,6 @@ class CollectionController(implicit injector: Injector) extends Injectable {
 
   def closeCollection() = { observers foreach { _.closeCollection() }; openedCollection ! None }
 
-  def requestPreviousItem(): Unit = observers foreach { _.previousItemRequested() }
-
-  def requestNextItem(): Unit = observers foreach { _.nextItemRequested() }
-
-  def openShareCollectionItem(messageData: MessageData): Unit = observers foreach { _.shareCollectionItem(messageData) }
-
-  def closeShareCollectionItem(): Unit = observers foreach { _.closeCollectionShare() }
-
   def addObserver(collectionsObserver: CollectionsObserver): Unit = observers += collectionsObserver
 
   def removeObserver(collectionsObserver: CollectionsObserver): Unit = observers -= collectionsObserver
