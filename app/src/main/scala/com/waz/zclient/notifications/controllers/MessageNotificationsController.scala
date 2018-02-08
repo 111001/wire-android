@@ -59,22 +59,20 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 
 class MessageNotificationsController(implicit inj: Injector, cxt: Context, eventContext: EventContext) extends Injectable { self =>
-
   import MessageNotificationsController._
-  def context = cxt
-  implicit val ec = Threading.Background
 
-  lazy val accounts             = inject[AccountsService]
-  lazy val global               = inject[GlobalModule]
+  import Threading.Implicits.Background
 
-  val currentAccount            = inject[Signal[Option[AccountData]]]
-  val zms                       = inject[Signal[ZMessaging]]
-  val notManager                = inject[NotificationManagerWrapper]
-  lazy val soundController      = inject[SoundController]
-  lazy val navigationController = inject[NavigationController]
-  lazy val convController       = inject[ConversationController]
+  private lazy val accounts             = inject[AccountsService]
+  private lazy val global               = inject[GlobalModule]
 
-  var accentColors = Map[AccountId, Int]()
+  private val zms                       = inject[Signal[ZMessaging]]
+  private val notManager                = inject[NotificationManagerWrapper]
+  private lazy val soundController      = inject[SoundController]
+  private lazy val navigationController = inject[NavigationController]
+  private lazy val convController       = inject[ConversationController]
+
+  private var accentColors = Map[AccountId, Int]()
 
   val colors = for {
     users <- accounts.loggedInAccounts.map(_.map(acc => acc.id -> acc.userId).toSeq)
@@ -96,10 +94,10 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
         case (account, (shouldBeSilent, nots)) =>
           (for {
             accountData <- global.accountsStorage.get(account)
-            team <- accountData.map(_.teamId) match {
-              case Some(Right(Some(teamId))) => global.teamsStorage.get(teamId)
-              case _ => Future.successful(Option.empty[TeamData])
-            }
+            team        <- accountData.map(_.teamId) match {
+                case Some(Right(Some(teamId))) => global.teamsStorage.get(teamId)
+                case _ => Future.successful(Option.empty[TeamData])
+              }
           } yield team.map(_.name)).map { teamName =>
             createConvNotifications(account, shouldBeSilent, nots, teamName)
           }(Threading.Ui)
@@ -127,7 +125,16 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
 
   conversationsBeingDisplayed { displayed =>
       verbose(s"conversationsBeingDisplayed: $displayed")
+
       global.notifications.notificationsSourceVisible ! displayed
+
+      displayed.foreach {
+        case (accountId, convIds) =>
+          convIds.foreach { convId =>
+            notManager.cancel(toNotificationConvId(accountId, convId))
+          }
+      }
+
   }
 
   private def createConvNotifications(account: AccountId, silent: Boolean, nots: Seq[NotificationInfo], teamName: Option[String]): Future[Unit] = {
@@ -153,7 +160,8 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
               sound       = getSound(ns, silent),
               color       = color,
               noTicker    = ns.forall(_.hasBeenDisplayed),
-              pic         = pic)
+              pic         = pic
+            )
 
             (convId, if (ns.size == 1)
               getSingleMessageNotification(account, builder, ns.head, teamNameOpt)
@@ -190,7 +198,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
         zms       <- accounts.zms(accountId).head
         assetData <- (zms, assetId) match {
           case (Some(z), Some(aId)) => z.assetsStorage.get(aId)
-          case _ => Future.successful(None)
+          case _                    => Future.successful(None)
         }
         bmp <- (zms, assetData) match {
           case (Some(z), Some(ad)) => z.imageLoader.loadBitmap(ad, BitmapRequest.Single(iconWidth), forceDownload = false).map(Option(_)).withTimeout(500.millis).recoverWith {
@@ -205,7 +213,6 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
 
   private def createSummaryNotification(account: AccountId, silent: Boolean, nots: Seq[NotificationInfo], teamName: Option[String]): Option[Notification] =
     if (!notManager.getActiveNotificationIds.contains(toNotificationGroupId(account))) {
-      verbose(s"creating summary notification")
       val builder = new NotificationCompat.Builder(cxt)
         .setWhen(nots.minBy(_.time).time.toEpochMilli)
         .setShowWhen(true)
@@ -218,7 +225,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
         .setGroupSummary(true)
         .setGroup(account.str)
         .setContentIntent(OpenAccountIntent(account))
-        .setDeleteIntent(clearNotificationsIntent(account, context))
+        .setDeleteIntent(clearNotificationsIntent(account, cxt))
 
       teamName.foreach(builder.setContentInfo)
       notificationColor(account).foreach(builder.setColor)
@@ -230,8 +237,8 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
     getSelectedSoundUri(value, defaultResId, defaultResId)
 
   private def getSelectedSoundUri(value: String, @RawRes preferenceDefault: Int, @RawRes returnDefault: Int): Uri = {
-    if (!TextUtils.isEmpty(value) && !RingtoneUtils.isDefaultValue(context, value, preferenceDefault)) Uri.parse(value)
-    else RingtoneUtils.getUriForRawId(context, returnDefault)
+    if (!TextUtils.isEmpty(value) && !RingtoneUtils.isDefaultValue(cxt, value, preferenceDefault)) Uri.parse(value)
+    else RingtoneUtils.getUriForRawId(cxt, returnDefault)
   }
 
   private def commonBuilder(accountId:   AccountId,
@@ -276,7 +283,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
       .setContentText(body)
       .setStyle(bigTextStyle)
       .setContentIntent(OpenConvIntent(accountId, n.convId, requestBase))
-      .setDeleteIntent(clearNotificationsIntent(accountId, n.convId, context))
+      .setDeleteIntent(clearNotificationsIntent(accountId, n.convId, cxt))
 
     if (n.tpe != NotificationType.CONNECT_REQUEST) {
       builder.addAction(R.drawable.ic_action_call, getString(R.string.notification__action__call), CallIntent(accountId, n.convId, requestBase + 1))
@@ -287,16 +294,19 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
 
   private def getMultipleMessagesNotification(accountId: AccountId, ns: Seq[NotificationInfo], builder: NotificationCompat.Builder, teamName: Option[String]): Notification = {
     val convIds = ns.map(_.convId).toSet
-    val users = ns.map(_.userName).toSet
     val isSingleConv = convIds.size == 1
+    val isEphemeral = ns.exists(_.isEphemeral)
 
     val titleText =
-      if (isSingleConv && ns.head.isGroupConv)
-        ns.head.convName.getOrElse("")
-      else if (isSingleConv)
-        ns.head.convName.orElse(ns.head.userName).getOrElse("")
+      if (isSingleConv) {
+        if (isEphemeral) getString(R.string.notification__message__ephemeral_someone)
+        else if (ns.head.isGroupConv) ns.head.convName.getOrElse("")
+        else ns.head.convName.orElse(ns.head.userName).getOrElse("")
+      }
       else
         getQuantityString(R.plurals.notification__new_messages__multiple, ns.size, Integer.valueOf(ns.size), convIds.size.toString)
+
+    verbose(s"titleText: $titleText")
 
     val separator = " • "
 
@@ -332,7 +342,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
       .setContentText(messages.last)
       .setStyle(inboxStyle)
       .setContentIntent(if (isSingleConv) OpenConvIntent(accountId, convIds.head, requestBase) else OpenAccountIntent(accountId))
-      .setDeleteIntent(if (isSingleConv) clearNotificationsIntent(accountId, convIds.head, context) else clearNotificationsIntent(accountId, context))
+      .setDeleteIntent(if (isSingleConv) clearNotificationsIntent(accountId, convIds.head, cxt) else clearNotificationsIntent(accountId, cxt))
       .build()
   }
 
@@ -374,7 +384,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
 
     val header = n.tpe match {
       case CONNECT_ACCEPTED => ""
-      case _ => getDefaultNotificationMessageLineHeader(n, singleConversationInBatch)
+      case _                => getDefaultNotificationMessageLineHeader(n, singleConversationInBatch)
     }
 
     val body = n.tpe match {
